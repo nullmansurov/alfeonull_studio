@@ -10,7 +10,6 @@ if getattr(sys, 'frozen', False):
     # Если запущен скомпилированный .exe
     BASE_DIR = os.path.dirname(sys.executable)
     # Перенаправляем все сообщения сервера в файл flask_logs.txt
-    # Это позволит прочитать ошибку "Internal Server Error"
     log_file = os.path.join(BASE_DIR, "flask_logs.txt")
     sys.stdout = open(log_file, "a", encoding="utf-8")
     sys.stderr = open(log_file, "a", encoding="utf-8")
@@ -20,15 +19,14 @@ else:
 
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLabel, QPushButton, QSystemTrayIcon, QMenu, 
-                             QAction, QStyle, QFrame)
+                             QAction, QStyle, QFrame, QGraphicsDropShadowEffect)
 from PyQt5.QtCore import Qt, QThread, QEvent
-from PyQt5.QtGui import QIcon, QCursor
+from PyQt5.QtGui import QIcon, QCursor, QColor
 
-# Импортируем создание приложения из твоей папки app
+# Импортируем создание приложения
 try:
     from app import create_app
 except Exception as e:
-    # Если даже импорт не удался, пишем в лог
     with open(os.path.join(BASE_DIR, "critical_error.txt"), "w") as f:
         f.write(f"Import Error: {e}\n")
         f.write(traceback.format_exc())
@@ -40,7 +38,6 @@ class FlaskThread(QThread):
         try:
             print("--- Starting Flask Engine ---")
             app = create_app()
-            # Запускаем локально. threaded=True важен для работы с GUI
             app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False, threaded=True)
         except Exception as e:
             print(f"CRITICAL FLASK ERROR: {e}")
@@ -50,7 +47,7 @@ class FlaskThread(QThread):
 class StudioGUI(QWidget):
     def __init__(self):
         super().__init__()
-        # Запуск сервера "под капотом"
+        # Запуск сервера
         self.flask_thread = FlaskThread()
         self.flask_thread.start()
         
@@ -58,76 +55,115 @@ class StudioGUI(QWidget):
         self.initTray()
 
     def initUI(self):
-        self.setWindowTitle('Alfeonull Studio Control')
-        self.setFixedSize(480, 360) 
+        self.setWindowTitle('Alfeonull Studio')
+        # Сделали окно чуть больше для "воздуха"
+        self.setFixedSize(500, 420) 
         
-        # Современная темная тема
+        # Обновленная темная тема (Slate 900)
         self.setStyleSheet("""
-            QWidget { background-color: #09090b; font-family: 'Segoe UI', sans-serif; }
+            QWidget { 
+                background-color: #0f172a; 
+                font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif; 
+            }
             QLabel { color: #f8fafc; }
             QFrame#card { 
-                background-color: #18181b; 
-                border: 1px solid #27272a; 
-                border-radius: 12px; 
+                background-color: #1e293b; 
+                border: 1px solid #334155; 
+                border-radius: 14px; 
             }
         """)
 
-        # Проверка иконки
+        # Иконка окна
         icon_path = os.path.join(BASE_DIR, 'icon.png')
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(40, 30, 40, 30)
-        layout.setSpacing(15)
+        layout.setContentsMargins(45, 40, 45, 40)
+        layout.setSpacing(18)
 
-        # Логотип/Заголовок
+        # Логотип и подзаголовок
         title = QLabel('ALFEONULL STUDIO')
-        title.setStyleSheet("font-size: 24px; font-weight: 900; letter-spacing: 1px;")
+        title.setStyleSheet("font-size: 26px; font-weight: 900; letter-spacing: 2px; color: #ffffff;")
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
-        status_tag = QLabel('LOCAL SERVICE ACTIVE')
-        status_tag.setStyleSheet("color: #8b5cf6; font-size: 10px; font-weight: 800; letter-spacing: 2px;")
+        status_tag = QLabel('● LOCAL SERVICE ACTIVE')
+        status_tag.setStyleSheet("color: #a78bfa; font-size: 11px; font-weight: 800; letter-spacing: 3px;")
         status_tag.setAlignment(Qt.AlignCenter)
         layout.addWidget(status_tag)
         
-        layout.addSpacing(10)
+        layout.addSpacing(15)
 
-        # Проверка наличия FFmpeg и Melt
+        # Функция для создания красивой карточки статуса с тенью
+        def create_card(engine_name, status_text, status_color):
+            card = QFrame()
+            card.setObjectName("card")
+            
+            # Добавляем мягкую тень
+            shadow = QGraphicsDropShadowEffect()
+            shadow.setBlurRadius(15)
+            shadow.setColor(QColor(0, 0, 0, 80))
+            shadow.setOffset(0, 4)
+            card.setGraphicsEffect(shadow)
+
+            c_lay = QHBoxLayout(card)
+            c_lay.setContentsMargins(20, 15, 20, 15)
+            
+            e_name = QLabel(engine_name.upper())
+            e_name.setStyleSheet("font-size: 13px; font-weight: 800; border: none; background: transparent; color: #cbd5e1;")
+            
+            e_stat = QLabel(status_text)
+            e_stat.setStyleSheet(f"font-size: 12px; font-weight: 900; border: none; background: transparent; color: {status_color};")
+            
+            c_lay.addWidget(e_name)
+            c_lay.addStretch()
+            c_lay.addWidget(e_stat)
+            return card
+
+        # Проверка движков
         def check_engine(name):
             exe = ".exe" if platform.system() == "Windows" else ""
             local = os.path.join(BASE_DIR, name, f"{name}{exe}")
             bin_p = os.path.join(BASE_DIR, name, "bin", f"{name}{exe}")
             if os.path.exists(local) or os.path.exists(bin_p) or shutil.which(name):
-                return "READY", "#22c55e"
-            return "MISSING", "#ef4444"
+                return "READY", "#4ade80" # Ярко-зеленый
+            return "MISSING", "#f87171" # Ярко-красный
 
         for engine in ["ffmpeg", "melt"]:
             text, color = check_engine(engine)
-            card = QFrame(); card.setObjectName("card")
-            c_lay = QHBoxLayout(card)
-            
-            e_name = QLabel(engine.upper())
-            e_name.setStyleSheet("font-weight: bold; border: none;")
-            
-            e_stat = QLabel(text)
-            e_stat.setStyleSheet(f"color: {color}; font-weight: 900; border: none;")
-            
-            c_lay.addWidget(e_name); c_lay.addStretch(); c_lay.addWidget(e_stat)
-            layout.addWidget(card)
+            layout.addWidget(create_card(engine, text, color))
 
         layout.addStretch()
 
-        # Кнопка запуска браузера
+        # Красивая кнопка с градиентом
         self.btn = QPushButton('OPEN STUDIO INTERFACE')
         self.btn.setCursor(QCursor(Qt.PointingHandCursor))
+        
+        # Тень для кнопки
+        btn_shadow = QGraphicsDropShadowEffect()
+        btn_shadow.setBlurRadius(20)
+        btn_shadow.setColor(QColor(99, 102, 241, 100)) # Фиолетовая тень
+        btn_shadow.setOffset(0, 5)
+        self.btn.setGraphicsEffect(btn_shadow)
+
         self.btn.setStyleSheet("""
             QPushButton {
-                background-color: #6366f1; color: white; border: none; 
-                border-radius: 10px; padding: 16px; font-weight: bold; font-size: 13px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6366f1, stop:1 #8b5cf6);
+                color: white; 
+                border: none; 
+                border-radius: 12px; 
+                padding: 18px; 
+                font-weight: 900; 
+                font-size: 13px;
+                letter-spacing: 1px;
             }
-            QPushButton:hover { background-color: #4f46e5; }
+            QPushButton:hover { 
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f46e5, stop:1 #7c3aed); 
+            }
+            QPushButton:pressed { 
+                background: #4338ca; 
+            }
         """)
         self.btn.clicked.connect(lambda: webbrowser.open('http://127.0.0.1:5000'))
         layout.addWidget(self.btn)
