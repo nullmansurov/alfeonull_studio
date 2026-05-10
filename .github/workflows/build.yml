@@ -55,19 +55,26 @@ jobs:
     - name: Bundle Portable Melt (Shotcut)
       shell: bash
       run: |
-        curl -L -o shotcut_dist.pkg ${{ matrix.shotcut_url }}
         mkdir -p dist/Alfeonull_Studio/melt
         
         if [ "$RUNNER_OS" == "Windows" ]; then
-          7z x shotcut_dist.pkg -y -oshotcut_temp
+          curl -L -o shotcut_dist.zip ${{ matrix.shotcut_url }}
+          7z x shotcut_dist.zip -y -oshotcut_temp
           cp -r shotcut_temp/shotcut/* dist/Alfeonull_Studio/melt/
+        elif [ "$RUNNER_OS" == "macOS" ]; then
+          # На Mac мы монтируем DMG образ и копируем приложение целиком
+          curl -L -o shotcut_dist.dmg ${{ matrix.shotcut_url }}
+          hdiutil attach shotcut_dist.dmg -mountpoint /Volumes/Shotcut
+          cp -R /Volumes/Shotcut/Shotcut.app dist/Alfeonull_Studio/melt/
+          hdiutil detach /Volumes/Shotcut
         elif [ "$RUNNER_OS" == "Linux" ]; then
+          curl -L -o shotcut_dist.txz ${{ matrix.shotcut_url }}
           mkdir -p temp_melt
-          tar -xf shotcut_dist.pkg -C temp_melt
+          tar -xf shotcut_dist.txz -C temp_melt
           cp -r temp_melt/Shotcut/* dist/Alfeonull_Studio/melt/ 2>/dev/null || cp -r temp_melt/shotcut/* dist/Alfeonull_Studio/melt/
         fi
 
-    - name: Finalize Project Folders
+    - name: Finalize Project Folders & Create Launchers
       shell: bash
       run: |
         # Копируем исходники в финальную папку
@@ -76,10 +83,28 @@ jobs:
         cp requirements.txt dist/Alfeonull_Studio/
         cp icon.png dist/Alfeonull_Studio/
         
-        # Переименовываем run.py в run.pyw, чтобы он запускался без консоли!
+        # Оставляем run.py и делаем копию run.pyw для Windows
         cp run.py dist/Alfeonull_Studio/run.pyw
+        cp run.py dist/Alfeonull_Studio/
         
         mkdir -p dist/Alfeonull_Studio/instance
+
+        # СОЗДАЕМ УДОБНЫЕ ФАЙЛЫ ДЛЯ ЗАПУСКА ПРОГРАММЫ
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          echo "@echo off" > dist/Alfeonull_Studio/START_STUDIO.bat
+          echo "echo Starting Alfeonull Studio Setup and Engine..." >> dist/Alfeonull_Studio/START_STUDIO.bat
+          echo "python run.pyw" >> dist/Alfeonull_Studio/START_STUDIO.bat
+        elif [ "$RUNNER_OS" == "macOS" ]; then
+          echo "#!/bin/bash" > dist/Alfeonull_Studio/START_STUDIO.command
+          echo "cd \"\$(dirname \"\$0\")\"" >> dist/Alfeonull_Studio/START_STUDIO.command
+          echo "python3 run.py" >> dist/Alfeonull_Studio/START_STUDIO.command
+          chmod +x dist/Alfeonull_Studio/START_STUDIO.command
+        elif [ "$RUNNER_OS" == "Linux" ]; then
+          echo "#!/bin/bash" > dist/Alfeonull_Studio/START_STUDIO.sh
+          echo "cd \"\$(dirname \"\$0\")\"" >> dist/Alfeonull_Studio/START_STUDIO.sh
+          echo "python3 run.py" >> dist/Alfeonull_Studio/START_STUDIO.sh
+          chmod +x dist/Alfeonull_Studio/START_STUDIO.sh
+        fi
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
