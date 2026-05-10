@@ -11,8 +11,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SETUP_MARKER = os.path.join(BASE_DIR, "setup_done.txt")
 REQ_FILE = os.path.join(BASE_DIR, "requirements.txt")
 
-# Хитрый трюк: Если PyQt5 еще не установлен (первый запуск), 
-# ставим его через консоль, чтобы мы могли показать красивый UI для остального
 try:
     from PyQt5.QtWidgets import QApplication
 except ImportError:
@@ -20,7 +18,6 @@ except ImportError:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "PyQt5"])
     os.execv(sys.executable, ['python'] + sys.argv)
 
-# Теперь безопасно импортируем PyQt5
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLabel, QPushButton, QSystemTrayIcon, QMenu, 
                              QAction, QStyle, QFrame, QGraphicsDropShadowEffect, QStackedWidget, QProgressBar)
