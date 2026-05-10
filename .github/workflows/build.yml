@@ -81,7 +81,7 @@ jobs:
           cp -r temp_melt/Shotcut/* dist/Alfeonull_Studio/melt/ 2>/dev/null || cp -r temp_melt/shotcut/* dist/Alfeonull_Studio/melt/
         fi
 
-    - name: Finalize Project Folders & Create Launchers
+    - name: Finalize Project Folders
       shell: bash
       run: |
         cp -r app dist/Alfeonull_Studio/
@@ -93,22 +93,6 @@ jobs:
         cp run.py dist/Alfeonull_Studio/
         
         mkdir -p dist/Alfeonull_Studio/instance
-
-        if [ "$RUNNER_OS" == "Windows" ]; then
-          echo "@echo off" > dist/Alfeonull_Studio/START_STUDIO.bat
-          echo "echo Starting Alfeonull Studio Setup and Engine..." >> dist/Alfeonull_Studio/START_STUDIO.bat
-          echo "python run.pyw" >> dist/Alfeonull_Studio/START_STUDIO.bat
-        elif [ "$RUNNER_OS" == "macOS" ]; then
-          echo "#!/bin/bash" > dist/Alfeonull_Studio/START_STUDIO.command
-          echo "cd \"\$(dirname \"\$0\")\"" >> dist/Alfeonull_Studio/START_STUDIO.command
-          echo "python3 run.py" >> dist/Alfeonull_Studio/START_STUDIO.command
-          chmod +x dist/Alfeonull_Studio/START_STUDIO.command
-        elif [ "$RUNNER_OS" == "Linux" ]; then
-          echo "#!/bin/bash" > dist/Alfeonull_Studio/START_STUDIO.sh
-          echo "cd \"\$(dirname \"\$0\")\"" >> dist/Alfeonull_Studio/START_STUDIO.sh
-          echo "python3 run.py" >> dist/Alfeonull_Studio/START_STUDIO.sh
-          chmod +x dist/Alfeonull_Studio/START_STUDIO.sh
-        fi
 
     - name: Zip Release Artifact
       shell: bash
