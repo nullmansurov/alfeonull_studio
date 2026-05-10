@@ -1,7 +1,7 @@
 name: Build Portable Studio
 
 on:
-  workflow_dispatch: # Запуск по кнопке "Run workflow"
+  workflow_dispatch:
 
 jobs:
   build:
@@ -36,18 +36,26 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pyinstaller
+        pip install pyinstaller Pillow
 
-    - name: Build Executable (PyInstaller)
+    - name: Convert Icon & Build Executable (PyInstaller)
       shell: bash
-      run: pyinstaller --noconsole --name "Alfeonull_Studio" run.py
+      run: |
+        # Автоматически конвертируем PNG в формат ICO для Windows
+        python -c "from PIL import Image; Image.open('icon.png').save('icon.ico')"
+        
+        # Компилируем .exe с нашей иконкой
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          pyinstaller --noconsole --icon="icon.ico" --name "Alfeonull_Studio" run.py
+        else
+          pyinstaller --noconsole --icon="icon.png" --name "Alfeonull_Studio" run.py
+        fi
 
     - name: Download & Extract FFmpeg (Windows)
       if: runner.os == 'Windows'
       shell: bash
       run: |
         curl -L -o ffmpeg.zip ${{ matrix.ffmpeg_url }}
-        # Распаковываем во временную папку temp_win, перезаписывая без вопросов (-y)
         7z x ffmpeg.zip -y -otemp_win
         mkdir -p dist/Alfeonull_Studio/ffmpeg/bin
         cp temp_win/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe dist/Alfeonull_Studio/ffmpeg/bin/
@@ -57,11 +65,9 @@ jobs:
       shell: bash
       run: |
         curl -L -o ffmpeg.zip ${{ matrix.ffmpeg_url }}
-        # Распаковываем во временную папку temp_mac
         unzip -o ffmpeg.zip -d temp_mac
         mkdir -p dist/Alfeonull_Studio/ffmpeg/bin
         cp temp_mac/ffmpeg dist/Alfeonull_Studio/ffmpeg/bin/
-        # Обязательно даем права на исполнение!
         chmod +x dist/Alfeonull_Studio/ffmpeg/bin/ffmpeg
 
     - name: Download & Extract FFmpeg (Linux)
@@ -72,16 +78,16 @@ jobs:
         mkdir -p temp_linux
         tar -xf ffmpeg.tar.xz -C temp_linux
         mkdir -p dist/Alfeonull_Studio/ffmpeg/bin
-        # Используем подстановочный знак для папки версии
         cp temp_linux/ffmpeg-*-static/ffmpeg dist/Alfeonull_Studio/ffmpeg/bin/
-        # Даем права на исполнение
         chmod +x dist/Alfeonull_Studio/ffmpeg/bin/ffmpeg
 
     - name: Assemble Portable Folder
       shell: bash
       run: |
-        # Копируем папку app (шаблоны, статика, пресеты) к собранному проекту
+        # Копируем структуру проекта
         cp -r app dist/Alfeonull_Studio/
+        # Обязательно кладем иконку, чтобы она отображалась в интерфейсе и трее
+        cp icon.png dist/Alfeonull_Studio/ 2>/dev/null || true
 
     - name: Upload Artifacts (ZIP)
       uses: actions/upload-artifact@v4
