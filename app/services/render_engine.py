@@ -23,9 +23,6 @@ class RenderWorker(threading.Thread):
         exe_ext = '.exe' if platform.system() == 'Windows' else ''
         
         # Очередь поиска Melt: 
-        # 1. Локальная портативная папка (которую скачает GitHub Actions)
-        # 2. Установленные системные пути (Windows / Mac)
-        # 3. Системный PATH
         melt_paths = [
             os.path.join(base_dir, 'melt', f'melt{exe_ext}'),
             os.path.join(base_dir, 'melt', 'bin', f'melt{exe_ext}'),
@@ -84,11 +81,17 @@ class RenderWorker(threading.Thread):
         temp_mov = os.path.join(self.app_config['RENDER_TMP_DIR'], f"temp_{job_uuid}.mov")
         mlt_path = os.path.join(cache_path, "s01.mlt")
         
+        # Настройка для скрытия окна консоли на Windows
+        creationflags = 0
+        if platform.system() == 'Windows':
+            creationflags = 0x08000000 # Флаг subprocess.CREATE_NO_WINDOW
+        
         cmd_png = [self.melt_exe, "-progress", mlt_path, "-consumer", f"avformat:{temp_mov}", "vcodec=png", "pix_fmt=rgba", "movflags=+faststart"]
-        subprocess.run(cmd_png, check=True, cwd=cache_path, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(cmd_png, check=True, cwd=cache_path, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=creationflags)
         
         cmd_webm = [self.ffmpeg_exe, "-i", temp_mov, "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "10M", "-auto-alt-ref", "0", "-cpu-used", "1", "-deadline", "good", "-row-mt", "1", "-threads", "4", "-c:a", "libopus", "-b:a", "128k", "-y", output_path]
-        subprocess.run(cmd_webm, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(cmd_webm, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=creationflags)
+        
         if os.path.exists(temp_mov): os.remove(temp_mov)
         return final_filename
 
