@@ -5,229 +5,177 @@ import webbrowser
 import platform
 import traceback
 
-# Перенаправляем потоки для режима --noconsole
-if sys.stdout is None:
-    sys.stdout = open(os.devnull, "w")
-if sys.stderr is None:
-    sys.stderr = open(os.devnull, "w")
+# --- 1. НАСТРОЙКА ПУТЕЙ И ЛОГИРОВАНИЯ ---
+if getattr(sys, 'frozen', False):
+    # Если запущен скомпилированный .exe
+    BASE_DIR = os.path.dirname(sys.executable)
+    # Перенаправляем все сообщения сервера в файл flask_logs.txt
+    # Это позволит прочитать ошибку "Internal Server Error"
+    log_file = os.path.join(BASE_DIR, "flask_logs.txt")
+    sys.stdout = open(log_file, "a", encoding="utf-8")
+    sys.stderr = open(log_file, "a", encoding="utf-8")
+else:
+    # Обычный запуск через python run.py
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLabel, QPushButton, QSystemTrayIcon, QMenu, 
-                             QAction, QStyle, QFrame, QMessageBox)
+                             QAction, QStyle, QFrame)
 from PyQt5.QtCore import Qt, QThread, QEvent
-from PyQt5.QtGui import QFont, QIcon, QCursor
+from PyQt5.QtGui import QIcon, QCursor
 
-from app import create_app
+# Импортируем создание приложения из твоей папки app
+try:
+    from app import create_app
+except Exception as e:
+    # Если даже импорт не удался, пишем в лог
+    with open(os.path.join(BASE_DIR, "critical_error.txt"), "w") as f:
+        f.write(f"Import Error: {e}\n")
+        f.write(traceback.format_exc())
+    sys.exit(1)
 
-# --- Поток для запуска Flask-сервера ---
+# --- 2. ПОТОК ДЛЯ FLASK СЕРВЕРА ---
 class FlaskThread(QThread):
     def run(self):
         try:
+            print("--- Starting Flask Engine ---")
             app = create_app()
-            os.makedirs(os.path.join(app.config['BASE_DIR'], 'instance'), exist_ok=True)
-            # Добавили threaded=True для стабильности
+            # Запускаем локально. threaded=True важен для работы с GUI
             app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False, threaded=True)
         except Exception as e:
-            log_crash(f"Flask Server Error: {e}")
+            print(f"CRITICAL FLASK ERROR: {e}")
+            traceback.print_exc()
 
-# --- Главное окно GUI ---
+# --- 3. ГЛАВНЫЙ ИНТЕРФЕЙС (GUI) ---
 class StudioGUI(QWidget):
     def __init__(self):
         super().__init__()
+        # Запуск сервера "под капотом"
         self.flask_thread = FlaskThread()
         self.flask_thread.start()
         
         self.initUI()
         self.initTray()
 
-    def get_base_dir(self):
-        if getattr(sys, 'frozen', False):
-            return os.path.dirname(sys.executable)
-        return os.path.abspath(os.path.dirname(__file__))
-
     def initUI(self):
-        base_dir = self.get_base_dir()
+        self.setWindowTitle('Alfeonull Studio Control')
+        self.setFixedSize(480, 360) 
         
-        self.setWindowTitle('Alfeonull Local Studio')
-        self.setFixedSize(480, 340) 
-        
+        # Современная темная тема
         self.setStyleSheet("""
-            QWidget {
-                background-color: #09090b; 
-                font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
+            QWidget { background-color: #09090b; font-family: 'Segoe UI', sans-serif; }
+            QLabel { color: #f8fafc; }
+            QFrame#card { 
+                background-color: #18181b; 
+                border: 1px solid #27272a; 
+                border-radius: 12px; 
             }
         """)
 
-        icon_path = os.path.join(base_dir, 'icon.png')
+        # Проверка иконки
+        icon_path = os.path.join(BASE_DIR, 'icon.png')
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
 
-        main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(40, 35, 40, 35)
-        main_layout.setSpacing(20)
+        layout = QVBoxLayout()
+        layout.setContentsMargins(40, 30, 40, 30)
+        layout.setSpacing(15)
 
-        header_layout = QVBoxLayout()
-        header_layout.setSpacing(4)
-        
+        # Логотип/Заголовок
         title = QLabel('ALFEONULL STUDIO')
-        title.setStyleSheet("color: #ffffff; font-size: 22px; font-weight: 900; letter-spacing: 1.5px;")
+        title.setStyleSheet("font-size: 24px; font-weight: 900; letter-spacing: 1px;")
         title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+
+        status_tag = QLabel('LOCAL SERVICE ACTIVE')
+        status_tag.setStyleSheet("color: #8b5cf6; font-size: 10px; font-weight: 800; letter-spacing: 2px;")
+        status_tag.setAlignment(Qt.AlignCenter)
+        layout.addWidget(status_tag)
         
-        subtitle = QLabel('LOCAL RENDER ENGINE')
-        subtitle.setStyleSheet("color: #8b5cf6; font-size: 11px; font-weight: 800; letter-spacing: 3px;")
-        subtitle.setAlignment(Qt.AlignCenter)
-        
-        header_layout.addWidget(title)
-        header_layout.addWidget(subtitle)
-        main_layout.addLayout(header_layout)
-        main_layout.addSpacing(10)
+        layout.addSpacing(10)
 
-        exe_ext = '.exe' if platform.system() == 'Windows' else ''
-        
-        ffmpeg_local = os.path.join(base_dir, 'ffmpeg', f'ffmpeg{exe_ext}')
-        ffmpeg_bin = os.path.join(base_dir, 'ffmpeg', 'bin', f'ffmpeg{exe_ext}')
-        
-        if os.path.exists(ffmpeg_local) or os.path.exists(ffmpeg_bin):
-            ffmpeg_status, c_ffmpeg, i_ffmpeg = "Found & Ready", "#22c55e", "🟢"
-        elif shutil.which("ffmpeg"):
-            ffmpeg_status, c_ffmpeg, i_ffmpeg = "System FFmpeg", "#eab308", "🟡"
-        else:
-            ffmpeg_status, c_ffmpeg, i_ffmpeg = "Not Found", "#ef4444", "🔴"
+        # Проверка наличия FFmpeg и Melt
+        def check_engine(name):
+            exe = ".exe" if platform.system() == "Windows" else ""
+            local = os.path.join(BASE_DIR, name, f"{name}{exe}")
+            bin_p = os.path.join(BASE_DIR, name, "bin", f"{name}{exe}")
+            if os.path.exists(local) or os.path.exists(bin_p) or shutil.which(name):
+                return "READY", "#22c55e"
+            return "MISSING", "#ef4444"
 
-        melt_paths = [
-            os.path.join(base_dir, 'melt', f'melt{exe_ext}'),
-            os.path.join(base_dir, 'melt', 'bin', f'melt{exe_ext}'),
-            r"C:\Program Files\Shotcut\melt.exe", 
-            r"C:\Program Files (x86)\Shotcut\melt.exe",
-            "/Applications/Shotcut.app/Contents/MacOS/melt",
-            "melt"
-        ]
-        melt_found = any(os.path.exists(p) for p in melt_paths if p != "melt") or shutil.which("melt")
-        
-        if melt_found:
-            melt_status, c_melt, i_melt = "Found & Ready", "#22c55e", "🟢"
-        else:
-            melt_status, c_melt, i_melt = "Not Found", "#ef4444", "🔴"
+        for engine in ["ffmpeg", "melt"]:
+            text, color = check_engine(engine)
+            card = QFrame(); card.setObjectName("card")
+            c_lay = QHBoxLayout(card)
+            
+            e_name = QLabel(engine.upper())
+            e_name.setStyleSheet("font-weight: bold; border: none;")
+            
+            e_stat = QLabel(text)
+            e_stat.setStyleSheet(f"color: {color}; font-weight: 900; border: none;")
+            
+            c_lay.addWidget(e_name); c_lay.addStretch(); c_lay.addWidget(e_stat)
+            layout.addWidget(card)
 
-        def create_status_card(name, icon, status_text, color):
-            card = QFrame()
-            card.setStyleSheet("""
-                QFrame {
-                    background-color: #18181b;
-                    border: 1px solid #27272a;
-                    border-radius: 12px;
-                }
-            """)
-            card_layout = QHBoxLayout(card)
-            card_layout.setContentsMargins(18, 14, 18, 14)
+        layout.addStretch()
 
-            lbl_name = QLabel(name)
-            lbl_name.setStyleSheet("color: #e2e8f0; font-size: 13px; font-weight: 700; border: none; background: transparent;")
-
-            lbl_status = QLabel(f"{icon}  {status_text}")
-            lbl_status.setStyleSheet(f"color: {color}; font-size: 12px; font-weight: 800; border: none; background: transparent;")
-            lbl_status.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-
-            card_layout.addWidget(lbl_name)
-            card_layout.addWidget(lbl_status)
-            return card
-
-        cards_layout = QVBoxLayout()
-        cards_layout.setSpacing(12)
-        cards_layout.addWidget(create_status_card("FFmpeg Engine", i_ffmpeg, ffmpeg_status, c_ffmpeg))
-        cards_layout.addWidget(create_status_card("Melt / Shotcut", i_melt, melt_status, c_melt))
-        main_layout.addLayout(cards_layout)
-        main_layout.addStretch()
-
-        self.btn_open = QPushButton('LAUNCH IN BROWSER')
-        self.btn_open.setCursor(QCursor(Qt.PointingHandCursor))
-        self.btn_open.setStyleSheet("""
+        # Кнопка запуска браузера
+        self.btn = QPushButton('OPEN STUDIO INTERFACE')
+        self.btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn.setStyleSheet("""
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6366f1, stop:1 #8b5cf6);
-                color: white; border: none; border-radius: 14px; padding: 16px; 
-                font-weight: 800; font-size: 13px; letter-spacing: 1px;
+                background-color: #6366f1; color: white; border: none; 
+                border-radius: 10px; padding: 16px; font-weight: bold; font-size: 13px;
             }
-            QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f46e5, stop:1 #7c3aed); }
-            QPushButton:pressed { background: #4338ca; }
+            QPushButton:hover { background-color: #4f46e5; }
         """)
-        self.btn_open.clicked.connect(self.open_browser)
-        main_layout.addWidget(self.btn_open)
+        self.btn.clicked.connect(lambda: webbrowser.open('http://127.0.0.1:5000'))
+        layout.addWidget(self.btn)
 
-        self.setLayout(main_layout)
+        self.setLayout(layout)
 
     def initTray(self):
-        base_dir = self.get_base_dir()
-        self.tray_icon = QSystemTrayIcon(self)
-        
-        icon_path = os.path.join(base_dir, 'icon.png')
+        self.tray = QSystemTrayIcon(self)
+        icon_path = os.path.join(BASE_DIR, 'icon.png')
         if os.path.exists(icon_path):
-            self.tray_icon.setIcon(QIcon(icon_path))
+            self.tray.setIcon(QIcon(icon_path))
         else:
-            self.tray_icon.setIcon(self.style().standardIcon(QStyle.SP_ComputerIcon))
-            
-        show_action = QAction("Show Studio Panel", self)
-        quit_action = QAction("Exit App", self)
-        
-        # ИСПРАВЛЕНИЕ: Теперь кнопки трея работают!
-        show_action.triggered.connect(self.restore_window)
-        quit_action.triggered.connect(self.quit_app)
-        
-        self.tray_menu = QMenu(self)
-        self.tray_menu.addAction(show_action)
-        self.tray_menu.addAction(quit_action)
-        
-        self.tray_icon.setContextMenu(self.tray_menu)
-        self.tray_icon.show()
-        
-        self.tray_icon.activated.connect(self.on_tray_click)
+            self.tray.setIcon(self.style().standardIcon(QStyle.SP_ComputerIcon))
 
-    def restore_window(self):
-        self.showNormal()
-        self.activateWindow()
-
-    def quit_app(self):
-        self.tray_icon.hide()
-        QApplication.instance().quit()
+        menu = QMenu()
+        show_action = menu.addAction("Show Panel")
+        show_action.triggered.connect(self.showNormal)
+        
+        exit_action = menu.addAction("Exit Entire App")
+        exit_action.triggered.connect(self.safe_exit)
+        
+        self.tray.setContextMenu(menu)
+        self.tray.show()
+        self.tray.activated.connect(self.on_tray_click)
 
     def on_tray_click(self, reason):
-        if reason == QSystemTrayIcon.DoubleClick or reason == QSystemTrayIcon.Trigger:
-            self.restore_window()
+        if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):
+            self.showNormal()
 
     def changeEvent(self, event):
-        if event.type() == QEvent.WindowStateChange:
-            if self.isMinimized():
-                self.hide()
-                self.tray_icon.showMessage(
-                    "Alfeonull Studio",
-                    "Studio is running in the background.",
-                    QSystemTrayIcon.Information,
-                    2000
-                )
-                event.ignore()
+        if event.type() == QEvent.WindowStateChange and self.isMinimized():
+            self.hide()
         super().changeEvent(event)
 
     def closeEvent(self, event):
-        # Если нажали "Крестик", полностью закрываем приложение
-        self.quit_app()
+        self.safe_exit()
 
-    def open_browser(self):
-        webbrowser.open('http://127.0.0.1:5000')
-
-def log_crash(e):
-    base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.abspath(os.path.dirname(__file__))
-    log_path = os.path.join(base_dir, "crash_log.txt")
-    
-    with open(log_path, "w", encoding="utf-8") as f:
-        f.write(f"CRITICAL ERROR: {str(e)}\n")
-        f.write("="*50 + "\n")
-        f.write(traceback.format_exc())
+    def safe_exit(self):
+        self.tray.hide()
+        QApplication.instance().quit()
 
 if __name__ == '__main__':
     try:
-        app = QApplication(sys.argv)
-        app.setQuitOnLastWindowClosed(False) 
+        q_app = QApplication(sys.argv)
+        q_app.setQuitOnLastWindowClosed(False)
         gui = StudioGUI()
         gui.show()
-        sys.exit(app.exec_())
+        sys.exit(q_app.exec_())
     except Exception as e:
-        log_crash(e)
+        with open(os.path.join(BASE_DIR, "startup_crash.txt"), "w") as f:
+            f.write(traceback.format_exc())
