@@ -5,11 +5,7 @@ import webbrowser
 import platform
 import traceback
 
-# =======================================================
-# ФИКС 1: ЗАЩИТА ОТ ВЫЛЕТОВ ПРИ ОТСУТСТВИИ КОНСОЛИ
-# Перенаправляем все print() в "пустоту", чтобы программа 
-# не крашилась при попытке вывести текст без терминала.
-# =======================================================
+# Перенаправляем потоки для режима --noconsole
 if sys.stdout is None:
     sys.stdout = open(os.devnull, "w")
 if sys.stderr is None:
@@ -17,7 +13,7 @@ if sys.stderr is None:
 
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLabel, QPushButton, QSystemTrayIcon, QMenu, 
-                             QAction, QStyle, QFrame)
+                             QAction, QStyle, QFrame, QMessageBox)
 from PyQt5.QtCore import Qt, QThread, QEvent
 from PyQt5.QtGui import QFont, QIcon, QCursor
 
@@ -26,9 +22,13 @@ from app import create_app
 # --- Поток для запуска Flask-сервера ---
 class FlaskThread(QThread):
     def run(self):
-        app = create_app()
-        os.makedirs(os.path.join(app.config['BASE_DIR'], 'instance'), exist_ok=True)
-        app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)
+        try:
+            app = create_app()
+            os.makedirs(os.path.join(app.config['BASE_DIR'], 'instance'), exist_ok=True)
+            # Добавили threaded=True для стабильности
+            app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False, threaded=True)
+        except Exception as e:
+            log_crash(f"Flask Server Error: {e}")
 
 # --- Главное окно GUI ---
 class StudioGUI(QWidget):
@@ -80,29 +80,20 @@ class StudioGUI(QWidget):
         header_layout.addWidget(title)
         header_layout.addWidget(subtitle)
         main_layout.addLayout(header_layout)
-
         main_layout.addSpacing(10)
 
         exe_ext = '.exe' if platform.system() == 'Windows' else ''
         
-        # FFmpeg
         ffmpeg_local = os.path.join(base_dir, 'ffmpeg', f'ffmpeg{exe_ext}')
         ffmpeg_bin = os.path.join(base_dir, 'ffmpeg', 'bin', f'ffmpeg{exe_ext}')
         
         if os.path.exists(ffmpeg_local) or os.path.exists(ffmpeg_bin):
-            ffmpeg_status = "Found & Ready"
-            c_ffmpeg = "#22c55e"
-            i_ffmpeg = "🟢"
+            ffmpeg_status, c_ffmpeg, i_ffmpeg = "Found & Ready", "#22c55e", "🟢"
         elif shutil.which("ffmpeg"):
-            ffmpeg_status = "System FFmpeg"
-            c_ffmpeg = "#eab308"
-            i_ffmpeg = "🟡"
+            ffmpeg_status, c_ffmpeg, i_ffmpeg = "System FFmpeg", "#eab308", "🟡"
         else:
-            ffmpeg_status = "Not Found"
-            c_ffmpeg = "#ef4444"
-            i_ffmpeg = "🔴"
+            ffmpeg_status, c_ffmpeg, i_ffmpeg = "Not Found", "#ef4444", "🔴"
 
-        # Melt
         melt_paths = [
             os.path.join(base_dir, 'melt', f'melt{exe_ext}'),
             os.path.join(base_dir, 'melt', 'bin', f'melt{exe_ext}'),
@@ -112,14 +103,11 @@ class StudioGUI(QWidget):
             "melt"
         ]
         melt_found = any(os.path.exists(p) for p in melt_paths if p != "melt") or shutil.which("melt")
+        
         if melt_found:
-            melt_status = "Found & Ready"
-            c_melt = "#22c55e"
-            i_melt = "🟢"
+            melt_status, c_melt, i_melt = "Found & Ready", "#22c55e", "🟢"
         else:
-            melt_status = "Not Found"
-            c_melt = "#ef4444"
-            i_melt = "🔴"
+            melt_status, c_melt, i_melt = "Not Found", "#ef4444", "🔴"
 
         def create_status_card(name, icon, status_text, color):
             card = QFrame()
@@ -149,7 +137,6 @@ class StudioGUI(QWidget):
         cards_layout.addWidget(create_status_card("FFmpeg Engine", i_ffmpeg, ffmpeg_status, c_ffmpeg))
         cards_layout.addWidget(create_status_card("Melt / Shotcut", i_melt, melt_status, c_melt))
         main_layout.addLayout(cards_layout)
-
         main_layout.addStretch()
 
         self.btn_open = QPushButton('LAUNCH IN BROWSER')
@@ -157,20 +144,11 @@ class StudioGUI(QWidget):
         self.btn_open.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6366f1, stop:1 #8b5cf6);
-                color: white; 
-                border: none;
-                border-radius: 14px; 
-                padding: 16px; 
-                font-weight: 800; 
-                font-size: 13px;
-                letter-spacing: 1px;
+                color: white; border: none; border-radius: 14px; padding: 16px; 
+                font-weight: 800; font-size: 13px; letter-spacing: 1px;
             }
-            QPushButton:hover { 
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f46e5, stop:1 #7c3aed);
-            }
-            QPushButton:pressed {
-                background: #4338ca;
-            }
+            QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f46e5, stop:1 #7c3aed); }
+            QPushButton:pressed { background: #4338ca; }
         """)
         self.btn_open.clicked.connect(self.open_browser)
         main_layout.addWidget(self.btn_open)
@@ -190,11 +168,10 @@ class StudioGUI(QWidget):
         show_action = QAction("Show Studio Panel", self)
         quit_action = QAction("Exit App", self)
         
-        # =======================================================
-        # ФИКС 2: ЗАЩИТА СИСТЕМНОГО ТРЕЯ ОТ СБОРЩИКА МУСОРА
-        # Добавили "self" в QMenu(self). Теперь меню не удаляется
-        # из памяти, и программа больше не будет "молча" вылетать.
-        # =======================================================
+        # ИСПРАВЛЕНИЕ: Теперь кнопки трея работают!
+        show_action.triggered.connect(self.restore_window)
+        quit_action.triggered.connect(self.quit_app)
+        
         self.tray_menu = QMenu(self)
         self.tray_menu.addAction(show_action)
         self.tray_menu.addAction(quit_action)
@@ -204,10 +181,17 @@ class StudioGUI(QWidget):
         
         self.tray_icon.activated.connect(self.on_tray_click)
 
+    def restore_window(self):
+        self.showNormal()
+        self.activateWindow()
+
+    def quit_app(self):
+        self.tray_icon.hide()
+        QApplication.instance().quit()
+
     def on_tray_click(self, reason):
         if reason == QSystemTrayIcon.DoubleClick or reason == QSystemTrayIcon.Trigger:
-            self.showNormal()
-            self.activateWindow()
+            self.restore_window()
 
     def changeEvent(self, event):
         if event.type() == QEvent.WindowStateChange:
@@ -223,7 +207,8 @@ class StudioGUI(QWidget):
         super().changeEvent(event)
 
     def closeEvent(self, event):
-        QApplication.instance().quit()
+        # Если нажали "Крестик", полностью закрываем приложение
+        self.quit_app()
 
     def open_browser(self):
         webbrowser.open('http://127.0.0.1:5000')
