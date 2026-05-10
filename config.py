@@ -9,11 +9,14 @@ else:
     # Иначе берем папку, где лежит скрипт (обычный запуск)
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
+# ИСПРАВЛЕНИЕ: Меняем обратные слеши на прямые для SQLite
+db_path = os.path.join(BASE_DIR, 'instance', 'app.db').replace('\\', '/')
+
 class Config:
     SECRET_KEY = 'LOCAL_STUDIO_SECRET_KEY_NO_NEED_TO_CHANGE'
     
-    # Жестко привязываем базу данных к папке рядом с .exe
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///' + os.path.join(BASE_DIR, 'instance', 'app.db')
+    # Жестко привязываем базу данных
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///' + db_path
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     BASE_DIR = BASE_DIR
