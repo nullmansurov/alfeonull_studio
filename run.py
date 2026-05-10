@@ -2,19 +2,25 @@ import sys
 import os
 import shutil
 import webbrowser
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QSystemTrayIcon, QMenu, QAction, QStyle
+import platform
+import traceback
+from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
+                             QLabel, QPushButton, QSystemTrayIcon, QMenu, 
+                             QAction, QStyle, QFrame)
 from PyQt5.QtCore import Qt, QThread, QEvent
-from PyQt5.QtGui import QFont, QIcon
+from PyQt5.QtGui import QFont, QIcon, QCursor
 
 from app import create_app
 
+# --- Поток для запуска Flask-сервера ---
 class FlaskThread(QThread):
     def run(self):
         app = create_app()
-        # Дополнительно создаем папку instance, чтобы БД не падала
+        # Дополнительно создаем папку instance, чтобы БД не падала при первом запуске
         os.makedirs(os.path.join(app.config['BASE_DIR'], 'instance'), exist_ok=True)
         app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)
 
+# --- Главное окно GUI ---
 class StudioGUI(QWidget):
     def __init__(self):
         super().__init__()
@@ -33,77 +39,146 @@ class StudioGUI(QWidget):
         base_dir = self.get_base_dir()
         
         self.setWindowTitle('Alfeonull Local Studio')
-        self.setFixedSize(450, 260)
-        self.setStyleSheet("background-color: #09090b; color: #f8fafc;")
+        # Немного увеличим окно для красивых отступов
+        self.setFixedSize(480, 340) 
+        
+        # Общий стиль окна (Темная тема, красивый шрифт)
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #09090b; 
+                font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
+            }
+        """)
 
         # Устанавливаем твою иконку для окна
         icon_path = os.path.join(base_dir, 'icon.png')
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
 
-        layout = QVBoxLayout()
-        layout.setContentsMargins(30, 30, 30, 30)
-        layout.setSpacing(15)
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(40, 35, 40, 35)
+        main_layout.setSpacing(20)
 
-        title = QLabel('Alfeonull Studio Control')
-        title.setFont(QFont('Arial', 18, QFont.Bold))
+        # --- ЗАГОЛОВОК ---
+        header_layout = QVBoxLayout()
+        header_layout.setSpacing(4)
+        
+        title = QLabel('ALFEONULL STUDIO')
+        title.setStyleSheet("color: #ffffff; font-size: 22px; font-weight: 900; letter-spacing: 1.5px;")
         title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
+        
+        subtitle = QLabel('LOCAL RENDER ENGINE')
+        subtitle.setStyleSheet("color: #8b5cf6; font-size: 11px; font-weight: 800; letter-spacing: 3px;")
+        subtitle.setAlignment(Qt.AlignCenter)
+        
+        header_layout.addWidget(title)
+        header_layout.addWidget(subtitle)
+        main_layout.addLayout(header_layout)
 
-        import platform
+        main_layout.addSpacing(10)
+
+        # --- ЛОГИКА ПОИСКА ДВИЖКОВ ---
         exe_ext = '.exe' if platform.system() == 'Windows' else ''
         
+        # FFmpeg
         ffmpeg_local = os.path.join(base_dir, 'ffmpeg', f'ffmpeg{exe_ext}')
         ffmpeg_bin = os.path.join(base_dir, 'ffmpeg', 'bin', f'ffmpeg{exe_ext}')
         
         if os.path.exists(ffmpeg_local) or os.path.exists(ffmpeg_bin):
-            ffmpeg_status = "✅ Local FFmpeg: Found & Ready"
-            c_ffmpeg = "#22c55e"
+            ffmpeg_status = "Found & Ready"
+            c_ffmpeg = "#22c55e" # Зеленый
+            i_ffmpeg = "🟢"
         elif shutil.which("ffmpeg"):
-            ffmpeg_status = "⚠️ System FFmpeg: Found (Local preferred)"
-            c_ffmpeg = "#eab308"
+            ffmpeg_status = "System FFmpeg"
+            c_ffmpeg = "#eab308" # Желтый
+            i_ffmpeg = "🟡"
         else:
-            ffmpeg_status = "❌ Local FFmpeg: Not Found in /ffmpeg"
-            c_ffmpeg = "#ef4444"
+            ffmpeg_status = "Not Found"
+            c_ffmpeg = "#ef4444" # Красный
+            i_ffmpeg = "🔴"
 
-        melt_paths = [r"C:\Program Files\Shotcut\melt.exe", r"C:\Program Files (x86)\Shotcut\melt.exe", "melt"]
+        # Melt (Shotcut)
+        melt_paths = [
+            os.path.join(base_dir, 'melt', f'melt{exe_ext}'),
+            os.path.join(base_dir, 'melt', 'bin', f'melt{exe_ext}'),
+            r"C:\Program Files\Shotcut\melt.exe", 
+            r"C:\Program Files (x86)\Shotcut\melt.exe",
+            "/Applications/Shotcut.app/Contents/MacOS/melt",
+            "melt"
+        ]
         melt_found = any(os.path.exists(p) for p in melt_paths if p != "melt") or shutil.which("melt")
         if melt_found:
-            melt_status = "✅ Shotcut (MELT): Found & Ready"
+            melt_status = "Found & Ready"
             c_melt = "#22c55e"
+            i_melt = "🟢"
         else:
-            melt_status = "❌ Shotcut (MELT): Not Found"
+            melt_status = "Not Found"
             c_melt = "#ef4444"
+            i_melt = "🔴"
 
-        lbl_ffmpeg = QLabel(ffmpeg_status)
-        lbl_ffmpeg.setStyleSheet(f"color: {c_ffmpeg}; font-weight: bold; font-size: 13px;")
-        layout.addWidget(lbl_ffmpeg)
+        # --- КАРТОЧКИ СТАТУСОВ (Современный UI) ---
+        def create_status_card(name, icon, status_text, color):
+            card = QFrame()
+            card.setStyleSheet("""
+                QFrame {
+                    background-color: #18181b;
+                    border: 1px solid #27272a;
+                    border-radius: 12px;
+                }
+            """)
+            card_layout = QHBoxLayout(card)
+            card_layout.setContentsMargins(18, 14, 18, 14)
 
-        lbl_melt = QLabel(melt_status)
-        lbl_melt.setStyleSheet(f"color: {c_melt}; font-weight: bold; font-size: 13px;")
-        layout.addWidget(lbl_melt)
+            lbl_name = QLabel(name)
+            lbl_name.setStyleSheet("color: #e2e8f0; font-size: 13px; font-weight: 700; border: none; background: transparent;")
 
-        layout.addStretch()
+            lbl_status = QLabel(f"{icon}  {status_text}")
+            lbl_status.setStyleSheet(f"color: {color}; font-size: 12px; font-weight: 800; border: none; background: transparent;")
+            lbl_status.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
-        self.btn_open = QPushButton('Launch Studio in Browser')
-        self.btn_open.setCursor(Qt.PointingHandCursor)
+            card_layout.addWidget(lbl_name)
+            card_layout.addWidget(lbl_status)
+            return card
+
+        cards_layout = QVBoxLayout()
+        cards_layout.setSpacing(12)
+        cards_layout.addWidget(create_status_card("FFmpeg Engine", i_ffmpeg, ffmpeg_status, c_ffmpeg))
+        cards_layout.addWidget(create_status_card("Melt / Shotcut", i_melt, melt_status, c_melt))
+        main_layout.addLayout(cards_layout)
+
+        main_layout.addStretch()
+
+        # --- ГЛАВНАЯ КНОПКА (С градиентом) ---
+        self.btn_open = QPushButton('LAUNCH IN BROWSER')
+        self.btn_open.setCursor(QCursor(Qt.PointingHandCursor))
         self.btn_open.setStyleSheet("""
             QPushButton {
-                background-color: #6366f1; color: white; border: none;
-                border-radius: 8px; padding: 12px; font-weight: bold; font-size: 14px;
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6366f1, stop:1 #8b5cf6);
+                color: white; 
+                border: none;
+                border-radius: 14px; 
+                padding: 16px; 
+                font-weight: 800; 
+                font-size: 13px;
+                letter-spacing: 1px;
             }
-            QPushButton:hover { background-color: #4f46e5; }
+            QPushButton:hover { 
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f46e5, stop:1 #7c3aed);
+            }
+            QPushButton:pressed {
+                background: #4338ca;
+            }
         """)
         self.btn_open.clicked.connect(self.open_browser)
-        layout.addWidget(self.btn_open)
+        main_layout.addWidget(self.btn_open)
 
-        self.setLayout(layout)
+        self.setLayout(main_layout)
 
     def initTray(self):
         base_dir = self.get_base_dir()
         self.tray_icon = QSystemTrayIcon(self)
         
-        # Устанавливаем твою иконку в системный трей (возле часов)
+        # Устанавливаем твою иконку в системный трей
         icon_path = os.path.join(base_dir, 'icon.png')
         if os.path.exists(icon_path):
             self.tray_icon.setIcon(QIcon(icon_path))
@@ -149,9 +224,23 @@ class StudioGUI(QWidget):
     def open_browser(self):
         webbrowser.open('http://127.0.0.1:5000')
 
+# --- СИСТЕМА ЛОГИРОВАНИЯ ОШИБОК ---
+def log_crash(e):
+    # Если приложение падает, создаем файл crash_log.txt рядом с exe
+    base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.abspath(os.path.dirname(__file__))
+    log_path = os.path.join(base_dir, "crash_log.txt")
+    
+    with open(log_path, "w", encoding="utf-8") as f:
+        f.write(f"CRITICAL ERROR: {str(e)}\n")
+        f.write("="*50 + "\n")
+        f.write(traceback.format_exc())
+
 if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    app.setQuitOnLastWindowClosed(False) 
-    gui = StudioGUI()
-    gui.show()
-    sys.exit(app.exec_())
+    try:
+        app = QApplication(sys.argv)
+        app.setQuitOnLastWindowClosed(False) 
+        gui = StudioGUI()
+        gui.show()
+        sys.exit(app.exec_())
+    except Exception as e:
+        log_crash(e)
