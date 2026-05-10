@@ -1,9 +1,18 @@
 import os
+import sys
 
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+# Магия для PyInstaller: определяем, скомпилировано ли приложение
+if getattr(sys, 'frozen', False):
+    # Если это скомпилированный .exe, берем папку, где лежит сам .exe
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    # Иначе берем папку, где лежит скрипт (обычный запуск)
+    BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 class Config:
     SECRET_KEY = 'LOCAL_STUDIO_SECRET_KEY_NO_NEED_TO_CHANGE'
+    
+    # Жестко привязываем базу данных к папке рядом с .exe
     SQLALCHEMY_DATABASE_URI = 'sqlite:///' + os.path.join(BASE_DIR, 'instance', 'app.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
