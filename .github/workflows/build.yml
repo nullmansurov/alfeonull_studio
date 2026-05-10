@@ -114,8 +114,13 @@ jobs:
       shell: bash
       run: |
         cd dist
-        # Создаем удобный ZIP-архив с именем платформы
-        zip -r ../${{ matrix.artifact_name }}.zip Alfeonull_Studio/
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          # Для Windows используем встроенный 7-Zip
+          7z a -tzip ../${{ matrix.artifact_name }}.zip Alfeonull_Studio/
+        else
+          # Для Mac и Linux используем стандартный zip
+          zip -r ../${{ matrix.artifact_name }}.zip Alfeonull_Studio/
+        fi
 
     - name: Publish to GitHub Releases
       uses: softprops/action-gh-release@v2
