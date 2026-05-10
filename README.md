@@ -23,7 +23,6 @@ Powered by industry-standard engines — **FFmpeg** and the **MLT Multimedia Fra
 
 - **🚀 Zero-Install Architecture**: 100% portable. Download, extract, and launch. All dependencies, engines, and environments are self-contained.
 - **⚙️ Dual-Engine Render Core**: Seamlessly integrates `FFmpeg` for ultra-fast encoding and `MLT` (Shotcut Engine) for complex multi-layered timeline processing.
-- **🖥️ Tactical GUI Bootloader**: A sleek, borderless initialization dashboard providing real-time system diagnostics, CPU telemetry, and dependency validation before mounting the server.
 - **📡 Local Flask Environment**: Operates entirely offline via `127.0.0.1:5000`. No cloud dependencies, ensuring total data privacy.
 - **🗄️ SQLite Database Integration**: Built-in persistent storage for render jobs, caching, and asset management.
 
@@ -37,9 +36,20 @@ Alfeonull Studio is ready to run on any operating system immediately after downl
 Grab the compiled portable version for your OS from the [Releases Tab](../../releases/latest).
 
 ### 2. Launch the Studio
-Extract the archive and run the respective launcher for your system:
+Extract the archive. The launch method depends on your operating system:
 
-*Note: On the very first launch, the bootloader will automatically initialize the environment and verify the integrity of the multimedia engines.*
+**🪟 For Windows:**
+Simply double-click the `run.pyw` file. The `.pyw` extension ensures the studio boots smoothly without opening a background command prompt.
+
+**🍎 For macOS & 🐧 Linux:**
+Open your terminal, navigate to the extracted directory, and execute the bootloader manually to bypass strict OS quarantine protocols:
+
+```bash
+cd path/to/Alfeonull_Studio
+python3 run.pyw
+```
+
+*Note: On the very first launch, the bootloader will automatically install necessary Python modules, initialize the environment, and verify the integrity of the multimedia engines.*
 
 ---
 
@@ -47,7 +57,7 @@ Extract the archive and run the respective launcher for your system:
 
 Alfeonull Studio utilizes a highly decoupled, multi-threaded approach:
 
-1. **The Bootloader (`run.py / PyQt5`)**: Validates system architecture, checks FFmpeg/MLT binaries, and provides a graphical terminal experience.
+1. **The Bootloader (`run.pyw / PyQt5`)**: Validates system architecture, checks FFmpeg/MLT binaries, and provides a graphical terminal experience.
 2. **The WSGI Server (`Flask`)**: Serves the modern, responsive web UI and handles RESTful requests.
 3. **The Render Worker (`threading.Thread`)**: A background daemon that parses MLT XML files (`.mlt`) and pipes frames directly into FFmpeg (`libvpx-vp9`, `yuva420p`) via background subprocesses, keeping the main UI highly responsive.
 
