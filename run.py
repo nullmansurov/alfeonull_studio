@@ -4,6 +4,17 @@ import shutil
 import webbrowser
 import platform
 import traceback
+
+# =======================================================
+# ФИКС 1: ЗАЩИТА ОТ ВЫЛЕТОВ ПРИ ОТСУТСТВИИ КОНСОЛИ
+# Перенаправляем все print() в "пустоту", чтобы программа 
+# не крашилась при попытке вывести текст без терминала.
+# =======================================================
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w")
+
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLabel, QPushButton, QSystemTrayIcon, QMenu, 
                              QAction, QStyle, QFrame)
@@ -16,7 +27,6 @@ from app import create_app
 class FlaskThread(QThread):
     def run(self):
         app = create_app()
-        # Дополнительно создаем папку instance, чтобы БД не падала при первом запуске
         os.makedirs(os.path.join(app.config['BASE_DIR'], 'instance'), exist_ok=True)
         app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False)
 
@@ -39,10 +49,8 @@ class StudioGUI(QWidget):
         base_dir = self.get_base_dir()
         
         self.setWindowTitle('Alfeonull Local Studio')
-        # Немного увеличим окно для красивых отступов
         self.setFixedSize(480, 340) 
         
-        # Общий стиль окна (Темная тема, красивый шрифт)
         self.setStyleSheet("""
             QWidget {
                 background-color: #09090b; 
@@ -50,7 +58,6 @@ class StudioGUI(QWidget):
             }
         """)
 
-        # Устанавливаем твою иконку для окна
         icon_path = os.path.join(base_dir, 'icon.png')
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
@@ -59,7 +66,6 @@ class StudioGUI(QWidget):
         main_layout.setContentsMargins(40, 35, 40, 35)
         main_layout.setSpacing(20)
 
-        # --- ЗАГОЛОВОК ---
         header_layout = QVBoxLayout()
         header_layout.setSpacing(4)
         
@@ -77,7 +83,6 @@ class StudioGUI(QWidget):
 
         main_layout.addSpacing(10)
 
-        # --- ЛОГИКА ПОИСКА ДВИЖКОВ ---
         exe_ext = '.exe' if platform.system() == 'Windows' else ''
         
         # FFmpeg
@@ -86,18 +91,18 @@ class StudioGUI(QWidget):
         
         if os.path.exists(ffmpeg_local) or os.path.exists(ffmpeg_bin):
             ffmpeg_status = "Found & Ready"
-            c_ffmpeg = "#22c55e" # Зеленый
+            c_ffmpeg = "#22c55e"
             i_ffmpeg = "🟢"
         elif shutil.which("ffmpeg"):
             ffmpeg_status = "System FFmpeg"
-            c_ffmpeg = "#eab308" # Желтый
+            c_ffmpeg = "#eab308"
             i_ffmpeg = "🟡"
         else:
             ffmpeg_status = "Not Found"
-            c_ffmpeg = "#ef4444" # Красный
+            c_ffmpeg = "#ef4444"
             i_ffmpeg = "🔴"
 
-        # Melt (Shotcut)
+        # Melt
         melt_paths = [
             os.path.join(base_dir, 'melt', f'melt{exe_ext}'),
             os.path.join(base_dir, 'melt', 'bin', f'melt{exe_ext}'),
@@ -116,7 +121,6 @@ class StudioGUI(QWidget):
             c_melt = "#ef4444"
             i_melt = "🔴"
 
-        # --- КАРТОЧКИ СТАТУСОВ (Современный UI) ---
         def create_status_card(name, icon, status_text, color):
             card = QFrame()
             card.setStyleSheet("""
@@ -148,7 +152,6 @@ class StudioGUI(QWidget):
 
         main_layout.addStretch()
 
-        # --- ГЛАВНАЯ КНОПКА (С градиентом) ---
         self.btn_open = QPushButton('LAUNCH IN BROWSER')
         self.btn_open.setCursor(QCursor(Qt.PointingHandCursor))
         self.btn_open.setStyleSheet("""
@@ -178,7 +181,6 @@ class StudioGUI(QWidget):
         base_dir = self.get_base_dir()
         self.tray_icon = QSystemTrayIcon(self)
         
-        # Устанавливаем твою иконку в системный трей
         icon_path = os.path.join(base_dir, 'icon.png')
         if os.path.exists(icon_path):
             self.tray_icon.setIcon(QIcon(icon_path))
@@ -188,14 +190,16 @@ class StudioGUI(QWidget):
         show_action = QAction("Show Studio Panel", self)
         quit_action = QAction("Exit App", self)
         
-        show_action.triggered.connect(self.showNormal)
-        quit_action.triggered.connect(QApplication.instance().quit)
+        # =======================================================
+        # ФИКС 2: ЗАЩИТА СИСТЕМНОГО ТРЕЯ ОТ СБОРЩИКА МУСОРА
+        # Добавили "self" в QMenu(self). Теперь меню не удаляется
+        # из памяти, и программа больше не будет "молча" вылетать.
+        # =======================================================
+        self.tray_menu = QMenu(self)
+        self.tray_menu.addAction(show_action)
+        self.tray_menu.addAction(quit_action)
         
-        tray_menu = QMenu()
-        tray_menu.addAction(show_action)
-        tray_menu.addAction(quit_action)
-        
-        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.setContextMenu(self.tray_menu)
         self.tray_icon.show()
         
         self.tray_icon.activated.connect(self.on_tray_click)
@@ -224,9 +228,7 @@ class StudioGUI(QWidget):
     def open_browser(self):
         webbrowser.open('http://127.0.0.1:5000')
 
-# --- СИСТЕМА ЛОГИРОВАНИЯ ОШИБОК ---
 def log_crash(e):
-    # Если приложение падает, создаем файл crash_log.txt рядом с exe
     base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.abspath(os.path.dirname(__file__))
     log_path = os.path.join(base_dir, "crash_log.txt")
     
