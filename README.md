@@ -4,8 +4,6 @@
 
 **Next-Generation Portable Video Rendering & Processing Framework**
 
-[![Build Status](https://img.shields.io/github/actions/workflow/status/YOUR_USERNAME/YOUR_REPO/build.yml?style=for-the-badge&color=66fcf1&logo=githubactions&logoColor=white)](https://github.com/YOUR_USERNAME/YOUR_REPO/actions)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-1f2833?style=for-the-badge)](https://github.com/YOUR_USERNAME/YOUR_REPO/releases)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-45a29e?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![Engines](https://img.shields.io/badge/Engines-FFmpeg%20%7C%20MLT-0b0c10?style=for-the-badge&color=f28482)](https://ffmpeg.org)
 
@@ -40,12 +38,6 @@ Grab the compiled portable version for your OS from the [Releases Tab](../../rel
 
 ### 2. Launch the Studio
 Extract the archive and run the respective launcher for your system:
-
-| OS | Action |
-| :--- | :--- |
-| **Windows** | Double-click `START_STUDIO.bat` |
-| **macOS** | Double-click `START_STUDIO.command` |
-| **Linux** | Run `./START_STUDIO.sh` in the terminal |
 
 *Note: On the very first launch, the bootloader will automatically initialize the environment and verify the integrity of the multimedia engines.*
 
