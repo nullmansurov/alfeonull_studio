@@ -2,6 +2,14 @@ name: Build Portable Studio (Raw Python)
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write # Необходимо для создания релизов
 
 jobs:
   build:
@@ -62,7 +70,6 @@ jobs:
           7z x shotcut_dist.zip -y -oshotcut_temp
           cp -r shotcut_temp/shotcut/* dist/Alfeonull_Studio/melt/
         elif [ "$RUNNER_OS" == "macOS" ]; then
-          # На Mac мы монтируем DMG образ и копируем приложение целиком
           curl -L -o shotcut_dist.dmg ${{ matrix.shotcut_url }}
           hdiutil attach shotcut_dist.dmg -mountpoint /Volumes/Shotcut
           cp -R /Volumes/Shotcut/Shotcut.app dist/Alfeonull_Studio/melt/
@@ -77,19 +84,16 @@ jobs:
     - name: Finalize Project Folders & Create Launchers
       shell: bash
       run: |
-        # Копируем исходники в финальную папку
         cp -r app dist/Alfeonull_Studio/
         cp config.py dist/Alfeonull_Studio/
         cp requirements.txt dist/Alfeonull_Studio/
         cp icon.png dist/Alfeonull_Studio/
         
-        # Оставляем run.py и делаем копию run.pyw для Windows
         cp run.py dist/Alfeonull_Studio/run.pyw
         cp run.py dist/Alfeonull_Studio/
         
         mkdir -p dist/Alfeonull_Studio/instance
 
-        # СОЗДАЕМ УДОБНЫЕ ФАЙЛЫ ДЛЯ ЗАПУСКА ПРОГРАММЫ
         if [ "$RUNNER_OS" == "Windows" ]; then
           echo "@echo off" > dist/Alfeonull_Studio/START_STUDIO.bat
           echo "echo Starting Alfeonull Studio Setup and Engine..." >> dist/Alfeonull_Studio/START_STUDIO.bat
@@ -106,8 +110,18 @@ jobs:
           chmod +x dist/Alfeonull_Studio/START_STUDIO.sh
         fi
 
-    - name: Upload Artifacts
-      uses: actions/upload-artifact@v4
+    - name: Zip Release Artifact
+      shell: bash
+      run: |
+        cd dist
+        # Создаем удобный ZIP-архив с именем платформы
+        zip -r ../${{ matrix.artifact_name }}.zip Alfeonull_Studio/
+
+    - name: Publish to GitHub Releases
+      uses: softprops/action-gh-release@v2
       with:
-        name: ${{ matrix.artifact_name }}
-        path: dist/Alfeonull_Studio/
+        tag_name: ${{ github.event.inputs.version }}
+        name: "Alfeonull Studio ${{ github.event.inputs.version }}"
+        files: ${{ matrix.artifact_name }}.zip
+        draft: false
+        prerelease: false
