@@ -1,53 +1,60 @@
-import sys
 import os
+import sys
+import subprocess
 import shutil
 import webbrowser
 import platform
 import traceback
 
-# --- 1. НАСТРОЙКА ПУТЕЙ И ЛОГИРОВАНИЯ ---
-if getattr(sys, 'frozen', False):
-    # Если запущен скомпилированный .exe
-    BASE_DIR = os.path.dirname(sys.executable)
-    # Перенаправляем все сообщения сервера в файл flask_logs.txt
-    log_file = os.path.join(BASE_DIR, "flask_logs.txt")
-    sys.stdout = open(log_file, "a", encoding="utf-8")
-    sys.stderr = open(log_file, "a", encoding="utf-8")
-else:
-    # Обычный запуск через python run.py
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# --- 1. АВТОМАТИЧЕСКАЯ УСТАНОВКА ЗАВИСИМОСТЕЙ ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SETUP_MARKER = os.path.join(BASE_DIR, "setup_done.txt")
+REQ_FILE = os.path.join(BASE_DIR, "requirements.txt")
 
+if not os.path.exists(SETUP_MARKER):
+    # Если это первый запуск, устанавливаем зависимости в фоне
+    try:
+        if os.path.exists(REQ_FILE):
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", REQ_FILE])
+        
+        # Создаем файл-метку, чтобы больше не устанавливать
+        with open(SETUP_MARKER, "w") as f:
+            f.write("Dependencies installed successfully.\n")
+            
+    except Exception as e:
+        # Если что-то пошло не так, пишем лог
+        with open(os.path.join(BASE_DIR, "setup_error.txt"), "w") as f:
+            f.write(f"Setup failed: {e}\n")
+        sys.exit(1)
+
+# --- Теперь безопасно импортируем сторонние библиотеки ---
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLabel, QPushButton, QSystemTrayIcon, QMenu, 
                              QAction, QStyle, QFrame, QGraphicsDropShadowEffect)
 from PyQt5.QtCore import Qt, QThread, QEvent
 from PyQt5.QtGui import QIcon, QCursor, QColor
 
-# Импортируем создание приложения
-try:
-    from app import create_app
-except Exception as e:
-    with open(os.path.join(BASE_DIR, "critical_error.txt"), "w") as f:
-        f.write(f"Import Error: {e}\n")
-        f.write(traceback.format_exc())
-    sys.exit(1)
+from app import create_app
 
 # --- 2. ПОТОК ДЛЯ FLASK СЕРВЕРА ---
 class FlaskThread(QThread):
     def run(self):
         try:
-            print("--- Starting Flask Engine ---")
+            # Отключаем вывод Flask в консоль (так как её больше нет)
+            import logging
+            log = logging.getLogger('werkzeug')
+            log.setLevel(logging.ERROR)
+            
             app = create_app()
             app.run(host='127.0.0.1', port=5000, debug=False, use_reloader=False, threaded=True)
         except Exception as e:
-            print(f"CRITICAL FLASK ERROR: {e}")
-            traceback.print_exc()
+            with open(os.path.join(BASE_DIR, "flask_error.txt"), "w") as f:
+                f.write(f"FLASK ERROR: {e}\n")
 
 # --- 3. ГЛАВНЫЙ ИНТЕРФЕЙС (GUI) ---
 class StudioGUI(QWidget):
     def __init__(self):
         super().__init__()
-        # Запуск сервера
         self.flask_thread = FlaskThread()
         self.flask_thread.start()
         
@@ -56,24 +63,14 @@ class StudioGUI(QWidget):
 
     def initUI(self):
         self.setWindowTitle('Alfeonull Studio')
-        # Сделали окно чуть больше для "воздуха"
         self.setFixedSize(500, 420) 
         
-        # Обновленная темная тема (Slate 900)
         self.setStyleSheet("""
-            QWidget { 
-                background-color: #0f172a; 
-                font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif; 
-            }
+            QWidget { background-color: #0f172a; font-family: 'Segoe UI', sans-serif; }
             QLabel { color: #f8fafc; }
-            QFrame#card { 
-                background-color: #1e293b; 
-                border: 1px solid #334155; 
-                border-radius: 14px; 
-            }
+            QFrame#card { background-color: #1e293b; border: 1px solid #334155; border-radius: 14px; }
         """)
 
-        # Иконка окна
         icon_path = os.path.join(BASE_DIR, 'icon.png')
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
@@ -82,7 +79,6 @@ class StudioGUI(QWidget):
         layout.setContentsMargins(45, 40, 45, 40)
         layout.setSpacing(18)
 
-        # Логотип и подзаголовок
         title = QLabel('ALFEONULL STUDIO')
         title.setStyleSheet("font-size: 26px; font-weight: 900; letter-spacing: 2px; color: #ffffff;")
         title.setAlignment(Qt.AlignCenter)
@@ -92,43 +88,29 @@ class StudioGUI(QWidget):
         status_tag.setStyleSheet("color: #a78bfa; font-size: 11px; font-weight: 800; letter-spacing: 3px;")
         status_tag.setAlignment(Qt.AlignCenter)
         layout.addWidget(status_tag)
-        
         layout.addSpacing(15)
 
-        # Функция для создания красивой карточки статуса с тенью
         def create_card(engine_name, status_text, status_color):
-            card = QFrame()
-            card.setObjectName("card")
-            
-            # Добавляем мягкую тень
+            card = QFrame(); card.setObjectName("card")
             shadow = QGraphicsDropShadowEffect()
-            shadow.setBlurRadius(15)
-            shadow.setColor(QColor(0, 0, 0, 80))
-            shadow.setOffset(0, 4)
+            shadow.setBlurRadius(15); shadow.setColor(QColor(0, 0, 0, 80)); shadow.setOffset(0, 4)
             card.setGraphicsEffect(shadow)
-
             c_lay = QHBoxLayout(card)
             c_lay.setContentsMargins(20, 15, 20, 15)
-            
             e_name = QLabel(engine_name.upper())
-            e_name.setStyleSheet("font-size: 13px; font-weight: 800; border: none; background: transparent; color: #cbd5e1;")
-            
+            e_name.setStyleSheet("font-size: 13px; font-weight: 800; border: none; color: #cbd5e1;")
             e_stat = QLabel(status_text)
-            e_stat.setStyleSheet(f"font-size: 12px; font-weight: 900; border: none; background: transparent; color: {status_color};")
-            
-            c_lay.addWidget(e_name)
-            c_lay.addStretch()
-            c_lay.addWidget(e_stat)
+            e_stat.setStyleSheet(f"font-size: 12px; font-weight: 900; border: none; color: {status_color};")
+            c_lay.addWidget(e_name); c_lay.addStretch(); c_lay.addWidget(e_stat)
             return card
 
-        # Проверка движков
         def check_engine(name):
             exe = ".exe" if platform.system() == "Windows" else ""
             local = os.path.join(BASE_DIR, name, f"{name}{exe}")
             bin_p = os.path.join(BASE_DIR, name, "bin", f"{name}{exe}")
             if os.path.exists(local) or os.path.exists(bin_p) or shutil.which(name):
-                return "READY", "#4ade80" # Ярко-зеленый
-            return "MISSING", "#f87171" # Ярко-красный
+                return "READY", "#4ade80" 
+            return "MISSING", "#f87171" 
 
         for engine in ["ffmpeg", "melt"]:
             text, color = check_engine(engine)
@@ -136,34 +118,15 @@ class StudioGUI(QWidget):
 
         layout.addStretch()
 
-        # Красивая кнопка с градиентом
         self.btn = QPushButton('OPEN STUDIO INTERFACE')
         self.btn.setCursor(QCursor(Qt.PointingHandCursor))
-        
-        # Тень для кнопки
         btn_shadow = QGraphicsDropShadowEffect()
-        btn_shadow.setBlurRadius(20)
-        btn_shadow.setColor(QColor(99, 102, 241, 100)) # Фиолетовая тень
-        btn_shadow.setOffset(0, 5)
+        btn_shadow.setBlurRadius(20); btn_shadow.setColor(QColor(99, 102, 241, 100)); btn_shadow.setOffset(0, 5)
         self.btn.setGraphicsEffect(btn_shadow)
-
         self.btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6366f1, stop:1 #8b5cf6);
-                color: white; 
-                border: none; 
-                border-radius: 12px; 
-                padding: 18px; 
-                font-weight: 900; 
-                font-size: 13px;
-                letter-spacing: 1px;
-            }
-            QPushButton:hover { 
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f46e5, stop:1 #7c3aed); 
-            }
-            QPushButton:pressed { 
-                background: #4338ca; 
-            }
+            QPushButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6366f1, stop:1 #8b5cf6);
+                color: white; border: none; border-radius: 12px; padding: 18px; font-weight: 900; font-size: 13px; }
+            QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f46e5, stop:1 #7c3aed); }
         """)
         self.btn.clicked.connect(lambda: webbrowser.open('http://127.0.0.1:5000'))
         layout.addWidget(self.btn)
@@ -177,14 +140,11 @@ class StudioGUI(QWidget):
             self.tray.setIcon(QIcon(icon_path))
         else:
             self.tray.setIcon(self.style().standardIcon(QStyle.SP_ComputerIcon))
-
         menu = QMenu()
         show_action = menu.addAction("Show Panel")
         show_action.triggered.connect(self.showNormal)
-        
         exit_action = menu.addAction("Exit Entire App")
         exit_action.triggered.connect(self.safe_exit)
-        
         self.tray.setContextMenu(menu)
         self.tray.show()
         self.tray.activated.connect(self.on_tray_click)
