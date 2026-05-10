@@ -1,72 +1,30 @@
-name: Build Portable Studio
-
-on:
-  workflow_dispatch: # Запуск по кнопке "Run workflow"
-
-jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            artifact_name: Alfeonull_Studio_Windows
-            # Официальная сборка BtbN для Windows
-            ffmpeg_url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-            
-          - os: macos-latest
-            artifact_name: Alfeonull_Studio_Mac
-            # Официальная сборка Evermeet для macOS
-            ffmpeg_url: "https://evermeet.cx/ffmpeg/getrelease/zip"
-            
-          - os: ubuntu-latest
-            artifact_name: Alfeonull_Studio_Linux
-            # Официальная статичная сборка John Van Sickle для Linux
-            ffmpeg_url: "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Setup Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-
-    - name: Install Python Dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pyinstaller
-
-    - name: Build Executable (PyInstaller)
-      run: pyinstaller --noconsole --name "Alfeonull_Studio" run.py
-
-    - name: Download & Extract FFmpeg (Windows)
+- name: Download & Extract FFmpeg (Windows)
       if: runner.os == 'Windows'
       run: |
         curl -L -o ffmpeg.zip ${{ matrix.ffmpeg_url }}
-        7z x ffmpeg.zip
+        # Флаг -y отвечает "Да" на любые вопросы архиватора, -o создает папку temp_win
+        7z x ffmpeg.zip -y -otemp_win
         mkdir -p dist/Alfeonull_Studio/ffmpeg/bin
-        cp ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe dist/Alfeonull_Studio/ffmpeg/bin/
+        cp temp_win/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe dist/Alfeonull_Studio/ffmpeg/bin/
 
     - name: Download & Extract FFmpeg (macOS)
       if: runner.os == 'macOS'
       run: |
         curl -L -o ffmpeg.zip ${{ matrix.ffmpeg_url }}
-        unzip ffmpeg.zip
+        # Флаг -o перезаписывает без вопросов, -d кидает файлы во временную папку
+        unzip -o ffmpeg.zip -d temp_mac
         mkdir -p dist/Alfeonull_Studio/ffmpeg/bin
-        cp ffmpeg dist/Alfeonull_Studio/ffmpeg/bin/
+        cp temp_mac/ffmpeg dist/Alfeonull_Studio/ffmpeg/bin/
         chmod +x dist/Alfeonull_Studio/ffmpeg/bin/ffmpeg
 
     - name: Download & Extract FFmpeg (Linux)
       if: runner.os == 'Linux'
       run: |
         curl -L -o ffmpeg.tar.xz ${{ matrix.ffmpeg_url }}
-        tar -xf ffmpeg.tar.xz
+        mkdir -p temp_linux
+        tar -xf ffmpeg.tar.xz -C temp_linux
         mkdir -p dist/Alfeonull_Studio/ffmpeg/bin
-        cp ffmpeg-*-static/ffmpeg dist/Alfeonull_Studio/ffmpeg/bin/
+        cp temp_linux/ffmpeg-*-static/ffmpeg dist/Alfeonull_Studio/ffmpeg/bin/
         chmod +x dist/Alfeonull_Studio/ffmpeg/bin/ffmpeg
 
     - name: Assemble Portable Folder
@@ -74,9 +32,3 @@ jobs:
       run: |
         # Копируем папку app (шаблоны, статика) к собранному проекту
         cp -r app dist/Alfeonull_Studio/
-
-    - name: Upload Artifacts (ZIP)
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ matrix.artifact_name }}
-        path: dist/Alfeonull_Studio/
