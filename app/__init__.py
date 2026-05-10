@@ -9,9 +9,12 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
+    # ИСПРАВЛЕНИЕ: Гарантируем, что папка instance создастся рядом с базовой директорией (даже в exe)
+    instance_dir = os.path.join(app.config['BASE_DIR'], 'instance')
+
     for path in [app.config['UPLOAD_FOLDER'], app.config['STOCK_FOLDER'], 
                  app.config['TEMPLATES_DATA_DIR'], app.config['RENDER_TMP_DIR'], 
-                 app.config['CACHE_DIR'], os.path.join(app.instance_path)]:
+                 app.config['CACHE_DIR'], instance_dir]:
         os.makedirs(path, exist_ok=True)
 
     db.init_app(app)
