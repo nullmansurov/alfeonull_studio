@@ -109,19 +109,19 @@ class StudioGUI(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFixedSize(500, 420) 
 
-        # Главный контейнер (с закругленными краями)
+        # Главный контейнер (с закругленными краями) - ТЕПЕРЬ В ЦВЕТАХ ПРОЕКТА
         self.main_frame = QFrame(self)
         self.main_frame.setGeometry(10, 10, 480, 400)
         self.main_frame.setStyleSheet("""
-            QFrame { background-color: #0f172a; border-radius: 16px; border: 1px solid #1e293b; font-family: 'Segoe UI', sans-serif; }
-            QLabel { border: none; }
+            QFrame { background-color: #09090b; border-radius: 16px; border: 1px solid #27272a; font-family: 'Inter', 'Segoe UI', sans-serif; }
+            QLabel { border: none; color: #f8fafc; }
         """)
         
         # Тень для окна
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(20)
-        shadow.setColor(QColor(0, 0, 0, 150))
-        shadow.setOffset(0, 5)
+        shadow.setColor(QColor(0, 0, 0, 200))
+        shadow.setOffset(0, 10)
         self.main_frame.setGraphicsEffect(shadow)
 
         main_layout = QVBoxLayout(self.main_frame)
@@ -130,6 +130,7 @@ class StudioGUI(QWidget):
         # Верхняя панель управления (кнопка закрытия)
         header = QFrame()
         header.setFixedHeight(40)
+        header.setStyleSheet("border: none;")
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(0, 0, 15, 0)
         header_layout.addStretch()
@@ -137,7 +138,7 @@ class StudioGUI(QWidget):
         close_btn = QPushButton("✕")
         close_btn.setFixedSize(24, 24)
         close_btn.setStyleSheet("""
-            QPushButton { background-color: transparent; color: #64748b; border: none; font-weight: bold; border-radius: 12px; }
+            QPushButton { background-color: transparent; color: #a1a1aa; border: none; font-weight: bold; border-radius: 12px; }
             QPushButton:hover { background-color: #ef4444; color: white; }
         """)
         close_btn.clicked.connect(self.safe_exit)
@@ -161,7 +162,7 @@ class StudioGUI(QWidget):
         load_layout.addStretch()
         
         self.loading_lbl = QLabel("INITIALIZING...")
-        self.loading_lbl.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: 800; letter-spacing: 2px;")
+        self.loading_lbl.setStyleSheet("color: #a1a1aa; font-size: 11px; font-weight: 800; letter-spacing: 2px;")
         self.loading_lbl.setAlignment(Qt.AlignCenter)
         load_layout.addWidget(self.loading_lbl)
         
@@ -169,7 +170,7 @@ class StudioGUI(QWidget):
         self.progress.setFixedHeight(4)
         self.progress.setTextVisible(False)
         self.progress.setStyleSheet("""
-            QProgressBar { border: none; background-color: #1e293b; border-radius: 2px; }
+            QProgressBar { border: none; background-color: #18181b; border-radius: 2px; }
             QProgressBar::chunk { background-color: #6366f1; border-radius: 2px; }
         """)
         load_layout.addWidget(self.progress)
@@ -201,10 +202,23 @@ class StudioGUI(QWidget):
         # Кнопка запуска
         self.btn = QPushButton('OPEN STUDIO INTERFACE')
         self.btn.setCursor(QCursor(Qt.PointingHandCursor))
+        
+        # Эффект тени для кнопки
+        btn_shadow = QGraphicsDropShadowEffect()
+        btn_shadow.setBlurRadius(20)
+        btn_shadow.setColor(QColor(99, 102, 241, 75)) # rgba(99, 102, 241, 0.3)
+        btn_shadow.setOffset(0, 4)
+        self.btn.setGraphicsEffect(btn_shadow)
+        
         self.btn.setStyleSheet("""
-            QPushButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6366f1, stop:1 #8b5cf6);
-                color: white; border: none; border-radius: 12px; padding: 16px; font-weight: 900; font-size: 13px; letter-spacing: 1px;}
-            QPushButton:hover { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4f46e5, stop:1 #7c3aed); }
+            QPushButton { 
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #6366f1, stop:1 #8b5cf6);
+                color: white; border: none; border-radius: 12px; padding: 16px; 
+                font-weight: 900; font-size: 13px; letter-spacing: 1px;
+            }
+            QPushButton:hover { 
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #4f46e5, stop:1 #7c3aed); 
+            }
         """)
         self.btn.clicked.connect(lambda: webbrowser.open('http://127.0.0.1:5000'))
         main_page_layout.addWidget(self.btn)
@@ -212,11 +226,12 @@ class StudioGUI(QWidget):
 
     def create_card(self, engine_name, status_text, status_color):
         card = QFrame()
-        card.setStyleSheet("background-color: #1e293b; border: 1px solid #334155; border-radius: 12px;")
+        # Стилизовано под карточки (.alf-card) из твоего интерфейса
+        card.setStyleSheet("background-color: #18181b; border: 1px solid #27272a; border-radius: 12px;")
         c_lay = QHBoxLayout(card)
         c_lay.setContentsMargins(20, 15, 20, 15)
         e_name = QLabel(engine_name.upper())
-        e_name.setStyleSheet("font-size: 13px; font-weight: 800; border: none; color: #cbd5e1; letter-spacing: 1px;")
+        e_name.setStyleSheet("font-size: 13px; font-weight: 800; border: none; color: #f8fafc; letter-spacing: 1px;")
         e_stat = QLabel(status_text)
         e_stat.setStyleSheet(f"font-size: 12px; font-weight: 900; border: none; color: {status_color}; letter-spacing: 1px;")
         c_lay.addWidget(e_name); c_lay.addStretch(); c_lay.addWidget(e_stat)
