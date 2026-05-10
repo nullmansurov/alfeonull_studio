@@ -11,14 +11,19 @@ jobs:
           - os: windows-latest
             artifact_name: Alfeonull_Studio_Windows
             ffmpeg_url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+            # Ссылка на портативный Shotcut для Win
+            shotcut_url: "https://github.com/mltframework/shotcut/releases/download/v24.04.28/shotcut-win64-240428.zip"
             
           - os: macos-latest
             artifact_name: Alfeonull_Studio_Mac
             ffmpeg_url: "https://evermeet.cx/ffmpeg/getrelease/zip"
+            # Для Mac портативный Shotcut обычно в DMG, но мы попробуем достать бинарник
+            shotcut_url: "https://github.com/mltframework/shotcut/releases/download/v24.04.28/shotcut-macos-240428.dmg"
             
           - os: ubuntu-latest
             artifact_name: Alfeonull_Studio_Linux
             ffmpeg_url: "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz"
+            shotcut_url: "https://github.com/mltframework/shotcut/releases/download/v24.04.28/shotcut-linux-x86_64-240428.txz"
 
     runs-on: ${{ matrix.os }}
 
@@ -38,58 +43,59 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller Pillow
 
-    - name: Convert Icon & Build Executable (PyInstaller)
+    - name: Create Icons & Build
       shell: bash
       run: |
-        # Автоматически конвертируем PNG в формат ICO для Windows
-        python -c "from PIL import Image; Image.open('icon.png').save('icon.ico')"
+        # Генерируем иконки разных форматов
+        python -c "from PIL import Image; img = Image.open('icon.png'); img.save('icon.ico'); img.save('icon.icns')"
         
-        # Компилируем .exe с нашей иконкой
+        # Сборка
         if [ "$RUNNER_OS" == "Windows" ]; then
-          pyinstaller --noconsole --icon="icon.ico" --name "Alfeonull_Studio" run.py
+          pyinstaller --clean --noconsole --icon="icon.ico" --name "Alfeonull_Studio" run.py
         else
-          pyinstaller --noconsole --icon="icon.png" --name "Alfeonull_Studio" run.py
+          pyinstaller --clean --noconsole --icon="icon.png" --name "Alfeonull_Studio" run.py
         fi
 
-    - name: Download & Extract FFmpeg (Windows)
-      if: runner.os == 'Windows'
+    - name: Bundle FFmpeg
       shell: bash
       run: |
-        curl -L -o ffmpeg.zip ${{ matrix.ffmpeg_url }}
-        7z x ffmpeg.zip -y -otemp_win
-        mkdir -p dist/Alfeonull_Studio/ffmpeg/bin
-        cp temp_win/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe dist/Alfeonull_Studio/ffmpeg/bin/
+        curl -L -o ffmpeg_dist.zip ${{ matrix.ffmpeg_url }}
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          7z x ffmpeg_dist.zip -y -otemp_ff
+          mkdir -p dist/Alfeonull_Studio/ffmpeg/bin
+          cp temp_ff/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe dist/Alfeonull_Studio/ffmpeg/bin/
+        else
+          unzip -o ffmpeg_dist.zip -d temp_ff
+          mkdir -p dist/Alfeonull_Studio/ffmpeg/bin
+          cp temp_ff/ffmpeg dist/Alfeonull_Studio/ffmpeg/bin/
+          chmod +x dist/Alfeonull_Studio/ffmpeg/bin/ffmpeg
+        fi
 
-    - name: Download & Extract FFmpeg (macOS)
-      if: runner.os == 'macOS'
+    - name: Bundle Portable Melt (Shotcut)
       shell: bash
       run: |
-        curl -L -o ffmpeg.zip ${{ matrix.ffmpeg_url }}
-        unzip -o ffmpeg.zip -d temp_mac
-        mkdir -p dist/Alfeonull_Studio/ffmpeg/bin
-        cp temp_mac/ffmpeg dist/Alfeonull_Studio/ffmpeg/bin/
-        chmod +x dist/Alfeonull_Studio/ffmpeg/bin/ffmpeg
+        curl -L -o shotcut_dist.pkg ${{ matrix.shotcut_url }}
+        mkdir -p dist/Alfeonull_Studio/melt
+        
+        if [ "$RUNNER_OS" == "Windows" ]; then
+          7z x shotcut_dist.pkg -y -oshotcut_temp
+          # Переносим всё содержимое Shotcut в папку melt
+          cp -r shotcut_temp/shotcut/* dist/Alfeonull_Studio/melt/
+        elif [ "$RUNNER_OS" == "Linux" ]; then
+          tar -xf shotcut_dist.pkg -C temp_melt
+          cp -r temp_melt/shotcut/* dist/Alfeonull_Studio/melt/
+        fi
+        # Примечание: Для Mac извлечение из DMG в CI сложнее, 
+        # обычно там ожидается установленный Shotcut в /Applications.
 
-    - name: Download & Extract FFmpeg (Linux)
-      if: runner.os == 'Linux'
+    - name: Finalize Project Folders
       shell: bash
       run: |
-        curl -L -o ffmpeg.tar.xz ${{ matrix.ffmpeg_url }}
-        mkdir -p temp_linux
-        tar -xf ffmpeg.tar.xz -C temp_linux
-        mkdir -p dist/Alfeonull_Studio/ffmpeg/bin
-        cp temp_linux/ffmpeg-*-static/ffmpeg dist/Alfeonull_Studio/ffmpeg/bin/
-        chmod +x dist/Alfeonull_Studio/ffmpeg/bin/ffmpeg
-
-    - name: Assemble Portable Folder
-      shell: bash
-      run: |
-        # Копируем структуру проекта
         cp -r app dist/Alfeonull_Studio/
-        # Обязательно кладем иконку, чтобы она отображалась в интерфейсе и трее
-        cp icon.png dist/Alfeonull_Studio/ 2>/dev/null || true
+        cp icon.png dist/Alfeonull_Studio/
+        mkdir -p dist/Alfeonull_Studio/instance
 
-    - name: Upload Artifacts (ZIP)
+    - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact_name }}
