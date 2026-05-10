@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import threading
 import queue
+import platform
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 
@@ -18,13 +19,26 @@ class RenderWorker(threading.Thread):
     def _find_executables(self):
         base_dir = self.app_config.get('BASE_DIR', os.path.abspath(os.path.dirname(__file__)))
         
-        # MELT paths
-        melt_paths = [r"C:\Program Files\Shotcut\melt.exe", r"C:\Program Files (x86)\Shotcut\melt.exe", "melt"]
+        # Определяем расширение в зависимости от ОС (.exe только на Windows)
+        exe_ext = '.exe' if platform.system() == 'Windows' else ''
         
-        # FFmpeg - Strictly prioritizing the local folder
+        # Очередь поиска Melt: 
+        # 1. Локальная портативная папка (которую скачает GitHub Actions)
+        # 2. Установленные системные пути (Windows / Mac)
+        # 3. Системный PATH
+        melt_paths = [
+            os.path.join(base_dir, 'melt', f'melt{exe_ext}'),
+            os.path.join(base_dir, 'melt', 'bin', f'melt{exe_ext}'),
+            r"C:\Program Files\Shotcut\melt.exe",
+            r"C:\Program Files (x86)\Shotcut\melt.exe",
+            "/Applications/Shotcut.app/Contents/MacOS/melt",
+            "melt"
+        ]
+        
+        # Очередь поиска FFmpeg:
         ffmpeg_paths = [
-            os.path.join(base_dir, 'ffmpeg', 'ffmpeg.exe'),
-            os.path.join(base_dir, 'ffmpeg', 'bin', 'ffmpeg.exe'),
+            os.path.join(base_dir, 'ffmpeg', f'ffmpeg{exe_ext}'),
+            os.path.join(base_dir, 'ffmpeg', 'bin', f'ffmpeg{exe_ext}'),
             "ffmpeg"
         ]
         
@@ -60,7 +74,9 @@ class RenderWorker(threading.Thread):
                 render_queue.task_done()
 
     def _process_job(self, job):
-        if not self.melt_exe or not self.ffmpeg_exe: raise Exception("Executables (melt/ffmpeg) not found")
+        if not self.melt_exe or not self.ffmpeg_exe: 
+            raise Exception("Executables (melt/ffmpeg) not found")
+            
         job_uuid = job['job_uuid']
         cache_path = job['cache_path']
         final_filename = f"render_{job_uuid}.webm"
@@ -76,28 +92,60 @@ class RenderWorker(threading.Thread):
         if os.path.exists(temp_mov): os.remove(temp_mov)
         return final_filename
 
+# --- Кроссплатформенные утилиты для шрифтов ---
+def _get_font_directories():
+    system = platform.system()
+    if system == 'Windows':
+        return [r"C:\Windows\Fonts"]
+    elif system == 'Darwin': # macOS
+        return ["/System/Library/Fonts", "/Library/Fonts", os.path.expanduser("~/Library/Fonts")]
+    else: # Linux
+        return ["/usr/share/fonts", "/usr/local/share/fonts", os.path.expanduser("~/.fonts")]
+
 def get_system_fonts():
-    fonts_dir = r"C:\Windows\Fonts"
-    fonts = []
-    if os.path.exists(fonts_dir):
-        for f in os.listdir(fonts_dir):
-            if f.lower().endswith('.ttf'): fonts.append(f)
-    return sorted(fonts)
+    fonts_dirs = _get_font_directories()
+    fonts = set()
+    
+    for d in fonts_dirs:
+        if os.path.exists(d):
+            # Рекурсивно ищем .ttf файлы в папках шрифтов
+            for root, _, files in os.walk(d):
+                for f in files:
+                    if f.lower().endswith('.ttf'): 
+                        fonts.add(f)
+                        
+    return sorted(list(fonts))
 
 def generate_text_image(text, output_path, font_name="Arial.ttf"):
     width, height = 1920, 1080
     img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    font_path = os.path.join(r"C:\Windows\Fonts", font_name)
+    
+    fonts_dirs = _get_font_directories()
+    font_path = None
+    
+    # Ищем точный путь к выбранному шрифту
+    for d in fonts_dirs:
+        if os.path.exists(d):
+            for root, _, files in os.walk(d):
+                if font_name in files:
+                    font_path = os.path.join(root, font_name)
+                    break
+        if font_path: break
+
     font_size = 120
-    try: font = ImageFont.truetype(font_path, font_size)
+    try: 
+        if not font_path: raise Exception("Font path not found")
+        font = ImageFont.truetype(font_path, font_size)
     except: 
         font = ImageFont.load_default()
         font_size = 20
+        
     while draw.textbbox((0,0), text, font=font)[2] > width - 100 and font_size > 20:
         font_size -= 5
         try: font = ImageFont.truetype(font_path, font_size)
         except: break
+        
     bbox = draw.textbbox((0,0), text, font=font)
     text_w = bbox[2] - bbox[0]
     text_h = bbox[3] - bbox[1]
